@@ -1,5 +1,5 @@
-;; Quantum Research Licensing Network - A decentralized platform for scientific discovery licensing
-;; Version 2: Enhanced Features and Validation
+;; Research Licensing Network - A decentralized platform for scientific discovery licensing
+;; Version 3: Complete System with Advanced Financial Model
 ;; Enables researchers to register and license their scientific breakthroughs with transparent citation tracking
 
 ;; System error definitions
@@ -126,6 +126,11 @@
 (define-public (finalize-license (discovery-id uint))
   (let (
     (discovery-details (unwrap! (map-get? scientific-discovery-registry { discovery-id: discovery-id }) DISCOVERY-NOT-FOUND-CODE))
+    (licensee-balance (default-to u0 (map-get? funding-ledger tx-sender)))
+    (initial-payment (get research-complexity discovery-details))
+    (citation-fee (/ (* (get research-complexity discovery-details) (get investigator-citation-rate discovery-details)) u100))
+    (impact-premium (/ (* initial-payment (get impact-factor discovery-details)) u100))
+    (total-licensing-cost (+ initial-payment citation-fee impact-premium))
   )
     ;; Comprehensive validation checks
     (asserts! (<= discovery-id (var-get registry-sequence)) INVALID-DISCOVERY-REFERENCE-CODE)
@@ -133,6 +138,14 @@
     (asserts! (is-eq (get publication-status discovery-details) "LICENSE_PENDING") DISCOVERY-NOT-FOUND-CODE)
     (asserts! (>= (- block-height (unwrap! (get approval-timestamp discovery-details) DISCOVERY-NOT-FOUND-CODE)) 
                 (get peer-review-period discovery-details)) REVIEW-PENDING-CODE)
+    (asserts! (>= licensee-balance total-licensing-cost) FUNDS-DEFICIENT-CODE)
+    
+    ;; Execute citation payment
+    (map-set funding-ledger tx-sender (- licensee-balance total-licensing-cost))
+    (map-set funding-ledger (get principal-investigator discovery-details) 
+      (+ (default-to u0 (map-get? funding-ledger (get principal-investigator discovery-details))) 
+         total-licensing-cost)
+    )
     
     ;; Update researcher's citation score
     (let ((citation-score (default-to u0 (map-get? researcher-citation-index 
@@ -196,4 +209,11 @@
 
 (define-read-only (list-registered-discoveries (entity principal))
   (default-to (list) (map-get? licensee-portfolio-ledger entity))
+)
+
+;; Impact factor calculation
+(define-read-only (compute-impact-premium (impact-factor uint))
+  (if (and (>= impact-factor u1) (<= impact-factor u5))
+      (* impact-factor u1)
+      u0)  ;; Failsafe default for invalid parameters
 )
